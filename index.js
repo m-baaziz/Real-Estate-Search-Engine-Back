@@ -53,7 +53,12 @@ app.get('/housing', (req, res) => {
 				console.log("zipcode : ", hit._source.zipcode);
 				return Object.assign({}, hit._source, {
 					id: hit.id,
-					position: geoLocs[hit._source.zipcode]
+					position: geoLocs[hit._source.zipcode],
+					img: [
+						'https://preview.ibb.co/dxjxCx/photo1.jpg',
+						'https://preview.ibb.co/dAmNec/bedroom1.jpg',
+						'https://preview.ibb.co/nBf4sx/kitchen1.jpg'
+					]
 				});
 			});
 			res.json({ data });
