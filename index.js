@@ -9,6 +9,7 @@ const config = require('./config');
 const app = express();
 const esClient = new elasticsearch.Client(config.elasticsearch);
 
+const LOCAL_API_PORT = 8080;
 const DESCRIPTION_MAX_LENGTH = 1000;
 const ZIPCODE_REGEXP = /^[0-9]{5}$/;
 const DEFAULT_COUNTRY = 'France';
@@ -19,6 +20,34 @@ app.use(morgan('dev'))
 	  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
 	  next();
 	});
+
+app.get('/housing/:id', (req, res) => {
+	const { id } = req.params;
+
+	if (typeof id !== 'string') {
+		res.status(400).send('Invalid Id');
+		return;
+	}
+
+	esClient.get({
+		index: 'listings',
+		type: 'listing',
+		id
+	}, (err, response) => {
+		if (err) {
+			res.status(err.status || 500).send(err.message || `Error : ${err}`);
+			return;
+		}
+		res.json(Object.assign({}, response._source, {
+			id: response._id,
+			img: [
+				'https://image.ibb.co/eMOJKc/photo2.jpg',
+				'https://image.ibb.co/nRtkzc/kitchen2.jpg',
+				'https://image.ibb.co/iJCdKc/bedroom2.jpg'
+			]
+		}));
+	})
+});
 
 app.get('/housing', (req, res) => {
 	const { query } = req.query;
@@ -37,6 +66,10 @@ app.get('/housing', (req, res) => {
 			}
 		}
 	}, (err, response) => {
+		if (err) {
+			res.status(500).send(`Error : ${err}`);
+			return;
+		}
 		const { hits, total } = response.hits;
 		const zipCodes = hits.map(h => h._source.zipcode);
 		
@@ -103,7 +136,7 @@ function getGeoLocs(zipCodes, cb) {
 
 
 if (process.env['ENV'] === 'local') {
-	app.listen(8080);
+	app.listen(LOCAL_API_PORT);
 }
 
 module.exports.handler = serverless(app);
