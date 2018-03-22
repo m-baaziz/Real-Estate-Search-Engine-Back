@@ -23,7 +23,6 @@ app.use(morgan('dev'))
 	});
 
 app.get('/housing/scroll', (req, res) => {
-	console.log("in SCROOOOL route");
 	const { scrollId } = req.query;
 
 	if (typeof  scrollId !== 'string') {
@@ -62,7 +61,6 @@ app.get('/housing', (req, res) => {
 });
 
 app.get('/housing/:id', (req, res) => {
-	console.log("in GEEET ROUUUUTE");
 	const { id } = req.params;
 
 	if (typeof id !== 'string') {
