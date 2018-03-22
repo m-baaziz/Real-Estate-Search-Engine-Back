@@ -13,6 +13,7 @@ const LOCAL_API_PORT = 8080;
 const DESCRIPTION_MAX_LENGTH = 1000;
 const ZIPCODE_REGEXP = /^[0-9]{5}$/;
 const DEFAULT_COUNTRY = 'France';
+const SCROLL_TIMEOUT = '30m';
 
 app.use(morgan('dev'))
 	.use((req, res, next) => {
@@ -21,7 +22,47 @@ app.use(morgan('dev'))
 	  next();
 	});
 
+app.get('/housing/scroll', (req, res) => {
+	console.log("in SCROOOOL route");
+	const { scrollId } = req.query;
+
+	if (typeof  scrollId !== 'string') {
+		res.status(400).send('Invalid scroll Id');
+		return;
+	}
+
+	esClient.scroll({
+    scrollId,
+    scroll: SCROLL_TIMEOUT
+  }, fetchResponse(req, res));
+});
+
+app.get('/housing', (req, res) => {
+	const { query } = req.query;
+
+	// use Redis cache to destroy previous scroll memory
+
+	if (typeof query !== 'string' || query.length > DESCRIPTION_MAX_LENGTH) {
+		res.status(400).send('Invalid query');
+		return;
+	}
+
+	// simulate query to aproximate results lenght / refuse if query is not accurate enough
+
+	esClient.search({
+		scroll: SCROLL_TIMEOUT,
+		body: {
+			query: {
+				match: {
+					description: query
+				}
+			}
+		}
+	}, fetchResponse(req, res));
+});
+
 app.get('/housing/:id', (req, res) => {
+	console.log("in GEEET ROUUUUTE");
 	const { id } = req.params;
 
 	if (typeof id !== 'string') {
@@ -33,13 +74,13 @@ app.get('/housing/:id', (req, res) => {
 		index: 'listings',
 		type: 'listing',
 		id
-	}, (err, response) => {
+	}, (err, esResponse) => {
 		if (err) {
 			res.status(err.status || 500).send(err.message || `Error : ${err}`);
 			return;
 		}
-		res.json(Object.assign({}, response._source, {
-			id: response._id,
+		res.json(Object.assign({}, esResponse._source, {
+			id: esResponse._id,
 			img: [
 				'https://image.ibb.co/eMOJKc/photo2.jpg',
 				'https://image.ibb.co/nRtkzc/kitchen2.jpg',
@@ -49,36 +90,21 @@ app.get('/housing/:id', (req, res) => {
 	})
 });
 
-app.get('/housing', (req, res) => {
-	const { query } = req.query;
-
-	if (typeof query !== 'string' || query.length > DESCRIPTION_MAX_LENGTH) {
-		res.status(400).send('Invalid query');
-		return;
-	}
-
-	esClient.search({
-		body: {
-			query: {
-				match: {
-					description: query
-				}
-			}
-		}
-	}, (err, response) => {
-		if (err) {
-			res.status(500).send(`Error : ${err}`);
+function fetchResponse(req, res) {
+	return (esError, esResponse) => {
+		if (esError) {
+			res.status(500).send(`Error : ${esError}`);
 			return;
 		}
-		const { hits, total } = response.hits;
+		const { hits, total } = esResponse.hits;
 		const zipCodes = hits.map(h => h._source.zipcode);
 		
 		console.log(`received a total of ${total} items, zipCodes : ${zipCodes}`);
 
-		getGeoLocs(zipCodes, (err, geoLocs) => {
-			if (err) {
-				console.log('Error while processing geo localizations : ', err);
-				res.status(500).send(`Error while processing geo localizations : ${err}`);
+		getGeoLocs(zipCodes, (esError, geoLocs) => {
+			if (esError) {
+				console.log('Error while processing geo localizations : ', esError);
+				res.status(500).send(`Error while processing geo localizations : ${esError}`);
 				return;
 			}
 			console.log("geolocs : ", geoLocs);
@@ -94,11 +120,10 @@ app.get('/housing', (req, res) => {
 					]
 				});
 			});
-			res.json({ data });
+			res.json({ data, scrollId: esResponse._scroll_id, total });
 		});
-	});
-});
-
+	}
+}
 
 function getGeoLocs(zipCodes, cb) {
 	const promises = zipCodes.map((zipCode) => {
@@ -110,7 +135,7 @@ function getGeoLocs(zipCodes, cb) {
 				url: `http://maps.googleapis.com/maps/api/geocode/json?address=${zipCode} France`,
 				qs: { address: `${zipCode} ${DEFAULT_COUNTRY}` },
 				json: true
-			}, (err, response, body) => {
+			}, (err, esResponse, body) => {
 				if (err) {
 					return reject(err);
 				}
@@ -119,7 +144,7 @@ function getGeoLocs(zipCodes, cb) {
 					console.log(`Zip code ${zipCode} was not found`);
 					return resolve();
 				}
-				return resolve({[zipCode]: response.body.results[0].geometry.location});
+				return resolve({[zipCode]: esResponse.body.results[0].geometry.location});
 			})
 		});
 	})
