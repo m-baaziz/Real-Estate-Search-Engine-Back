@@ -69,8 +69,8 @@ app.get('/housing/:id', (req, res) => {
 	}
 
 	esClient.get({
-		index: 'listings',
-		type: 'listing',
+		index: 'sparkstreaming',
+		type: 'offer',
 		id
 	}, (err, esResponse) => {
 		if (err) {
@@ -95,31 +95,24 @@ function fetchResponse(req, res) {
 			return;
 		}
 		const { hits, total } = esResponse.hits;
-		const zipCodes = hits.map(h => h._source.zipcode);
+		//const zipCodes = hits.map(h => h._source.zipcode);
 		
-		console.log(`received a total of ${total} items, zipCodes : ${zipCodes}`);
-
-		getGeoLocs(zipCodes, (esError, geoLocs) => {
-			if (esError) {
-				console.log('Error while processing geo localizations : ', esError);
-				res.status(500).send(`Error while processing geo localizations : ${esError}`);
-				return;
-			}
-			console.log("geolocs : ", geoLocs);
-			const data = hits.map((hit) => {
-				console.log("zipcode : ", hit._source.zipcode);
-				return Object.assign({}, hit._source, {
-					id: hit._id,
-					position: geoLocs[hit._source.zipcode],
-					img: [
-						'https://image.ibb.co/eMOJKc/photo2.jpg',
-						'https://image.ibb.co/nRtkzc/kitchen2.jpg',
-						'https://image.ibb.co/iJCdKc/bedroom2.jpg'
-					]
-				});
+		//console.log(`received a total of ${total} items, zipCodes : ${zipCodes}`);
+		const data = hits.map((hit) => {
+			return Object.assign({}, hit._source, {
+				id: hit._id
 			});
-			res.json({ data, scrollId: esResponse._scroll_id, total });
 		});
+		res.json({ data, scrollId: esResponse._scroll_id, total });
+		// getGeoLocs(zipCodes, (esError, geoLocs) => {
+		// 	if (esError) {
+		// 		console.log('Error while processing geo localizations : ', esError);
+		// 		res.status(500).send(`Error while processing geo localizations : ${esError}`);
+		// 		return;
+		// 	}
+		// 	console.log("geolocs : ", geoLocs);
+			
+		// });
 	}
 }
 
