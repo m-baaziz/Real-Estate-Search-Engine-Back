@@ -13,7 +13,6 @@ const esClient = new elasticsearch.Client(config.elasticsearch);
 const LOCAL_API_PORT = 8080;
 const DESCRIPTION_MAX_LENGTH = 1000;
 const ZIPCODE_REGEXP = /^[0-9]{5}$/;
-const DEFAULT_COUNTRY = 'France';
 const SCROLL_TIMEOUT = '30m';
 
 app.use(morgan('dev'))
@@ -87,6 +86,8 @@ app.get('/housing', (req, res) => {
 	// simulate query to aproximate results lenght / refuse if query is not accurate enough
 
 	esClient.search({
+		index: config.index,
+		type: config.hitsType,
 		scroll: SCROLL_TIMEOUT,
 		body: {
 			query: {
@@ -111,8 +112,8 @@ app.get('/housing/:id', (req, res) => {
 	}
 
 	esClient.get({
-		index: 'sparkstreaming',
-		type: 'offer',
+		index: config.index,
+		type: config.hitsType,
 		id
 	}, (err, esResponse) => {
 		if (err) {
@@ -120,12 +121,7 @@ app.get('/housing/:id', (req, res) => {
 			return;
 		}
 		res.json(Object.assign({}, esResponse._source, {
-			id: esResponse._id,
-			img: [
-				'https://image.ibb.co/eMOJKc/photo2.jpg',
-				'https://image.ibb.co/nRtkzc/kitchen2.jpg',
-				'https://image.ibb.co/iJCdKc/bedroom2.jpg'
-			]
+			id: esResponse._id
 		}));
 	})
 });
@@ -137,61 +133,14 @@ function fetchResponse(req, res) {
 			return;
 		}
 		const { hits, total } = esResponse.hits;
-		//const zipCodes = hits.map(h => h._source.zipcode);
-		
-		//console.log(`received a total of ${total} items, zipCodes : ${zipCodes}`);
 		const data = hits.map((hit) => {
 			return Object.assign({}, hit._source, {
 				id: hit._id
 			});
 		});
 		res.json({ data, scrollId: esResponse._scroll_id, total });
-		// getGeoLocs(zipCodes, (esError, geoLocs) => {
-		// 	if (esError) {
-		// 		console.log('Error while processing geo localizations : ', esError);
-		// 		res.status(500).send(`Error while processing geo localizations : ${esError}`);
-		// 		return;
-		// 	}
-		// 	console.log("geolocs : ", geoLocs);
-			
-		// });
 	}
 }
-
-function getGeoLocs(zipCodes, cb) {
-	const promises = zipCodes.map((zipCode) => {
-		return new Promise((resolve, reject) => {
-			if (!zipCode.match(ZIPCODE_REGEXP)) {
-				return reject(`Invalid zip code : ${zipCode}`);
-			}
-			request.get({
-				url: `http://maps.googleapis.com/maps/api/geocode/json?address=${zipCode} France`,
-				qs: { address: `${zipCode} ${DEFAULT_COUNTRY}` },
-				json: true
-			}, (err, esResponse, body) => {
-				if (err) {
-					return reject(err);
-				}
-				const { results } = body;
-				if (!results || results.length === 0) {
-					console.log(`Zip code ${zipCode} was not found`);
-					return resolve();
-				}
-				return resolve({[zipCode]: esResponse.body.results[0].geometry.location});
-			})
-		});
-	})
-
-	Promise.all(promises).then((locations) => {
-		const uniqLocs = locations.reduce((acc, loc) => {
-			return Object.assign({}, acc, loc);
-		}, {});
-		cb(null, uniqLocs);
-	}).catch((error) => {
-		cb(error);
-	});
-}
-
 
 if (process.env['ENV'] === 'local') {
 	app.listen(LOCAL_API_PORT);
