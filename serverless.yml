@@ -5,6 +5,18 @@ provider:
   runtime: nodejs6.10
   stage: dev
   region: eu-west-3
+  environment:
+    USERS_DYNAMODB_TABLE: Users-${opt:region, self:provider.region}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.USERS_DYNAMODB_TABLE}"
 
 functions:
   app:
@@ -12,3 +24,40 @@ functions:
     events:
       - http: ANY /
       - http: 'ANY {proxy+}'
+
+resources:
+  Resources:
+    UsersDynamoDbTable:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: id
+            AttributeType: S
+          -
+            AttributeName: email
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:provider.environment.USERS_DYNAMODB_TABLE}
+        GlobalSecondaryIndexes: 
+          - 
+            IndexName: email-index
+            KeySchema: 
+              - 
+                AttributeName: email
+                KeyType: HASH
+            Projection: 
+              NonKeyAttributes: 
+                - id
+                - password
+              ProjectionType: INCLUDE
+            ProvisionedThroughput: 
+              ReadCapacityUnits: 1
+              WriteCapacityUnits: 1
