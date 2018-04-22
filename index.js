@@ -237,7 +237,7 @@ app.get('/housing', (req, res) => {
 				bool: {
 					must: _.map(matches, (value, key) => {
 						return { match: { [key]: value } };
-					}).concat(_.map(ranges, (value, key) => {
+					}).concat(_.map(_.filter(ranges, (value, key) => !_.isEmpty(value)), (value, key) => {
 						return { range: { [key]: value } };
 					}))
 				}
