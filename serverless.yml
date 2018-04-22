@@ -1,5 +1,8 @@
 service: api-findmyhome
 
+plugins:
+  - serverless-webpack
+
 provider:
   name: aws
   runtime: nodejs6.10
@@ -7,6 +10,7 @@ provider:
   region: eu-west-3
   environment:
     USERS_DYNAMODB_TABLE: Users-${opt:region, self:provider.region}
+    USERS_EMAIL_INDEX: email-index
   iamRoleStatements:
     - Effect: Allow
       Action:
@@ -16,7 +20,13 @@ provider:
         - dynamodb:PutItem
         - dynamodb:UpdateItem
         - dynamodb:DeleteItem
-      Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.USERS_DYNAMODB_TABLE}"
+      Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.USERS_DYNAMODB_TABLE}/index/*"
+
+
+custom:
+  webpack:
+    webpackConfig: ./webpack.config.js
+    includeModules: true
 
 functions:
   app:
@@ -48,7 +58,7 @@ resources:
         TableName: ${self:provider.environment.USERS_DYNAMODB_TABLE}
         GlobalSecondaryIndexes: 
           - 
-            IndexName: email-index
+            IndexName: ${self:provider.environment.USERS_EMAIL_INDEX}
             KeySchema: 
               - 
                 AttributeName: email

@@ -1,14 +1,25 @@
 const express = require('express');
+const AWS = require('aws-sdk');
+const uuidv4 = require('uuid/v4');
+const jwt = require('jsonwebtoken');
 const morgan = require('morgan');
 const serverless = require('serverless-http');
 const elasticsearch = require('elasticsearch');
 const request = require('request');
 const _ = require('lodash');
+const validator = require('validator');
+const bodyParser = require('body-parser');
+const bcrypt = require('bcrypt');
 
-const config = require('./config');
+const config = require('./config/config');
 
 const app = express();
 const esClient = new elasticsearch.Client(config.elasticsearch);
+
+const dynamodb = new AWS.DynamoDB({
+	apiVersion: '2012-08-10',
+	region: 'eu-west-3'
+});
 
 const LOCAL_API_PORT = 8080;
 const DESCRIPTION_MAX_LENGTH = 1000;
@@ -16,11 +27,127 @@ const ZIPCODE_REGEXP = /^[0-9]{5}$/;
 const SCROLL_TIMEOUT = '30m';
 
 app.use(morgan('dev'))
+	.use(bodyParser.urlencoded({extended: true}))
+  .use(bodyParser.json())
 	.use((req, res, next) => {
 	  res.header("Access-Control-Allow-Origin", "*");
 	  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
 	  next();
 	});
+
+
+function findUsersByEmail(email, cb) {
+	const query = {
+		TableName: process.env['USERS_DYNAMODB_TABLE'],
+	  IndexName: process.env['USERS_EMAIL_INDEX'],
+	  KeyConditionExpression: 'email = :email',
+	  ExpressionAttributeValues: {
+	      ':email': { S: email }
+	  }
+	};
+  dynamodb.query(query, (error, data) => {
+  	if (error) {
+  		cb(error);
+  		return;
+  	}
+  	console.log('DATA : ', JSON.stringify(data));
+  	cb(null, data);
+  });
+}
+
+
+
+
+
+app.post('/users/signin', (req, res) => {
+	console.log('body : ', req.body);
+	const { email, password } = req.body;
+
+	console.log("params : ", email, password);
+
+	if (!validator.isEmail(email)) {
+		res.status(400).send('Invalid email');
+		return;
+	}
+
+	findUsersByEmail(email, (error, data) => {
+		if (error) {
+			res.status(400).send(error);
+			return;
+		}
+		if (data.Count === 0) {
+  		res.status(400).send(`User ${email} not found`);
+  		return;
+  	}
+  	const u = data.Items[0];
+		bcrypt.compare(password, u.password.S, function(err, isValid) {
+			if (err) {
+				res.status(500).send(error);
+				return;
+			}
+			if (!isValid) {
+				res.status(403).send("Email and password don't match");
+				return;
+			}
+			const user = { email: u.email.S, id: u.id.S };
+			const token = jwt.sign(user, config.jwt.secret, {
+				expiresIn: config.jwt.duration
+			});
+			res.json({ user, token });
+		});
+	});
+});
+
+
+app.post('/users/signup', (req, res) => {
+	console.log('body : ', req.body);
+	const { email, password } = req.body;
+
+	console.log("params : ", email, password);
+
+	findUsersByEmail(email, (error, data) => {
+		if (error) {
+			res.status(400).send(error);
+			return;
+		}
+		if (data.Count > 0) {
+			res.status(403).send(`Email ${email} not available`);
+			return;
+		}
+		const id = uuidv4();
+		bcrypt.hash(password, config.bcrypt.saltRounds, function(err, hash) {
+			if (err) {
+				res.status(500).send(err);
+				return;
+			}
+		  const params = {
+				Item: {
+					id: { S: id },
+					email: { S: email },
+					password: { S: hash }
+				},
+				TableName: process.env['USERS_DYNAMODB_TABLE']
+			};
+
+			dynamodb.putItem(params, (error, data) => {
+				if (error) {
+		  		res.status(500).send(error);
+		  		return;
+		  	}
+				console.log('User successfully signed up, generating jwt ... ::: ', data);
+				const user = { email, id };
+				const token = jwt.sign(user, config.jwt.secret, {
+					expiresIn: config.jwt.duration
+				});
+				res.json({ user, token });
+			});
+		});
+	});
+});
+
+
+
+
 
 app.get('/housing/scroll', (req, res) => {
 	const { scrollId } = req.query;
@@ -56,7 +183,7 @@ app.get('/housing', (req, res) => {
 		(roomsMin !== NaN && roomsMax !== NaN && roomsMin > roomsMax) ||
 		(latMin !== NaN && latMax !== NaN && latMin > latMax) ||
 		(lonMin !== NaN && lonMax !== NaN && lonMin > lonMax) ||
-		(typeof zipcode !== 'string' || (zipcode.lenght > 0 && !zipcode.match(/^[0-9]{5}$/))) ||
+		(typeof zipcode !== 'string' || (zipcode.lenght > 0 && !zipcode.match(ZIPCODE_REGEXP))) ||
 		(typeof custom !== 'string' || custom.length > DESCRIPTION_MAX_LENGTH) ||
 		(typeof city !== 'string' || city.length > DESCRIPTION_MAX_LENGTH)
 	) {
@@ -102,8 +229,8 @@ app.get('/housing', (req, res) => {
 	// simulate query to aproximate results lenght / refuse if query is not accurate enough
 
 	esClient.search({
-		index: config.index,
-		type: config.hitsType,
+		index: config.elasticsearch.index,
+		type: config.elasticsearch.hitsType,
 		scroll: SCROLL_TIMEOUT,
 		body: {
 			query: {
@@ -128,8 +255,8 @@ app.get('/housing/:id', (req, res) => {
 	}
 
 	esClient.get({
-		index: config.index,
-		type: config.hitsType,
+		index: config.elasticsearch.index,
+		type: config.elasticsearch.hitsType,
 		id
 	}, (err, esResponse) => {
 		if (err) {
