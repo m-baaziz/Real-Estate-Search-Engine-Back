@@ -9,7 +9,7 @@ const request = require('request');
 const _ = require('lodash');
 const validator = require('validator');
 const bodyParser = require('body-parser');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 
 const config = require('./config/config');
 
@@ -56,7 +56,9 @@ function findUsersByEmail(email, cb) {
 }
 
 
-
+app.post('/users/:id/log', (req, res) => {
+	 // check token.id === req.params.id
+});
 
 
 app.post('/users/signin', (req, res) => {
@@ -76,7 +78,7 @@ app.post('/users/signin', (req, res) => {
 			return;
 		}
 		if (data.Count === 0) {
-  		res.status(400).send(`User ${email} not found`);
+  		res.status(400).send("Email and password don't match");
   		return;
   	}
   	const u = data.Items[0];
