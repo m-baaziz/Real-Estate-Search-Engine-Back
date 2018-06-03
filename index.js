@@ -36,6 +36,24 @@ app.use(morgan('dev'))
 	});
 
 
+function findUsersById(id, cb) {
+	const query = {
+		TableName: process.env['USERS_DYNAMODB_TABLE'],
+	  IndexName: process.env['USERS_EMAIL_INDEX'],
+	  KeyConditionExpression: 'id = :id',
+	  ExpressionAttributeValues: {
+	      ':id': { S: id }
+	  }
+	};
+  dynamodb.query(query, (error, data) => {
+  	if (error) {
+  		cb(error);
+  		return;
+  	}
+  	cb(null, data);
+  });
+}
+
 function findUsersByEmail(email, cb) {
 	const query = {
 		TableName: process.env['USERS_DYNAMODB_TABLE'],
@@ -55,9 +73,55 @@ function findUsersByEmail(email, cb) {
   });
 }
 
+function updateUser(id, attributeName, value, cb) {
+	const dbAttributeName = `#${attributeName.toUpperCase()}`;
+	const getAttributeType = () => {
+		if (typeof value === 'string') return 'S';
+		if (typeof value === 'number') return 'N';
+		if (Array.isArray(value)) return 'L';
+		if (typeof value === 'object') return 'M';
+	};
 
-app.post('/users/:id/log', (req, res) => {
-	 // check token.id === req.params.id
+	const params = {
+		ExpressionAttributeNames: {
+			[dbAttributeName]: attributeName
+		}, 
+		ExpressionAttributeValues: {
+			':a': {
+				[getAttributeType()]: value
+			}
+		}, 
+		Key: {
+			id: {
+				S: id
+			}
+		},
+		ReturnValues: 'ALL_NEW',
+		TableName: process.env['USERS_DYNAMODB_TABLE'], 
+		UpdateExpression: `SET ${dbAttributeName} = :a`
+	};
+
+	dynamodb.updateItem(params, (err, data) => {
+		cb(err, data);
+	});
+}
+
+
+app.post('/logs', (req, res) => {
+ 	const { token } = req.body;
+	jwt.verify(token, config.jwt.secret, (err, user) => {
+		if (err || user.id !== req.params.id) {
+			res.status(400).send('Action not authorized');
+			return;
+		}
+		updateUser(user.id, 'logs', req.body.housingItem, (err, data) => {
+			if (err) {
+				res.status(500).send(`Failed to add logs on user ${user.email}`);
+				return;
+			}
+			res.status(200).send(`Logs successfully added for user ${user.email}`);
+		})
+	});
 });
 
 
