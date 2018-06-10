@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "ENV=local USERS_DYNAMODB_TABLE=Users-eu-west-3 USERS_EMAIL_INDEX=email-index node index.js",
+    "start": "ENV=local USERS_DYNAMODB_TABLE=Users-eu-west-3 USERS_EMAIL_INDEX=email-index LOGS_DYNAMODB_TABLE=Logs-eu-west-3 node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

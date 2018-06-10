@@ -11,6 +11,8 @@ provider:
   environment:
     USERS_DYNAMODB_TABLE: Users-${opt:region, self:provider.region}
     USERS_EMAIL_INDEX: email-index
+    LOGS_DYNAMODB_TABLE: Logs-${opt:region, self:provider.region}
+    LOGS_USERID_INDEX: logs-userid-index
   iamRoleStatements:
     - Effect: Allow
       Action:
@@ -20,7 +22,9 @@ provider:
         - dynamodb:PutItem
         - dynamodb:UpdateItem
         - dynamodb:DeleteItem
-      Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.USERS_DYNAMODB_TABLE}/index/*"
+      Resource: 
+        - "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.USERS_DYNAMODB_TABLE}/index/*"
+        - "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.LOGS_DYNAMODB_TABLE}/index/*"
 
 
 custom:
@@ -67,6 +71,41 @@ resources:
               NonKeyAttributes: 
                 - id
                 - password
+              ProjectionType: INCLUDE
+            ProvisionedThroughput: 
+              ReadCapacityUnits: 1
+              WriteCapacityUnits: 1
+    LogsDynamoDbTable:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: id
+            AttributeType: S
+          -
+            AttributeName: userId
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:provider.environment.LOGS_DYNAMODB_TABLE}
+        GlobalSecondaryIndexes: 
+          - 
+            IndexName: ${self:provider.environment.LOGS_USERID_INDEX}
+            KeySchema: 
+              - 
+                AttributeName: userId
+                KeyType: HASH
+            Projection: 
+              NonKeyAttributes: 
+                - id
+                - type
+                - value
               ProjectionType: INCLUDE
             ProvisionedThroughput: 
               ReadCapacityUnits: 1

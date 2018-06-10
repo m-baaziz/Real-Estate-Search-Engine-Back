@@ -10,13 +10,14 @@ const _ = require('lodash');
 const validator = require('validator');
 const bodyParser = require('body-parser');
 const bcrypt = require('bcryptjs');
+const utils = require('./utils');
 
 const config = require('./config/config');
 
 const app = express();
 const esClient = new elasticsearch.Client(config.elasticsearch);
 
-const dynamodb = new AWS.DynamoDB({
+const dynamodb = new AWS.DynamoDB.DocumentClient({
 	apiVersion: '2012-08-10',
 	region: 'eu-west-3'
 });
@@ -42,7 +43,7 @@ function findUsersById(id, cb) {
 	  IndexName: process.env['USERS_EMAIL_INDEX'],
 	  KeyConditionExpression: 'id = :id',
 	  ExpressionAttributeValues: {
-	      ':id': { S: id }
+	      ':id': id
 	  }
 	};
   dynamodb.query(query, (error, data) => {
@@ -60,7 +61,7 @@ function findUsersByEmail(email, cb) {
 	  IndexName: process.env['USERS_EMAIL_INDEX'],
 	  KeyConditionExpression: 'email = :email',
 	  ExpressionAttributeValues: {
-	      ':email': { S: email }
+	      ':email': email
 	  }
 	};
   dynamodb.query(query, (error, data) => {
@@ -75,52 +76,56 @@ function findUsersByEmail(email, cb) {
 
 function updateUser(id, attributeName, value, cb) {
 	const dbAttributeName = `#${attributeName.toUpperCase()}`;
-	const getAttributeType = () => {
-		if (typeof value === 'string') return 'S';
-		if (typeof value === 'number') return 'N';
-		if (Array.isArray(value)) return 'L';
-		if (typeof value === 'object') return 'M';
-	};
 
 	const params = {
 		ExpressionAttributeNames: {
 			[dbAttributeName]: attributeName
 		}, 
 		ExpressionAttributeValues: {
-			':a': {
-				[getAttributeType()]: value
-			}
+			':a': value
 		}, 
 		Key: {
-			id: {
-				S: id
-			}
+			id
 		},
 		ReturnValues: 'ALL_NEW',
 		TableName: process.env['USERS_DYNAMODB_TABLE'], 
 		UpdateExpression: `SET ${dbAttributeName} = :a`
 	};
 
-	dynamodb.updateItem(params, (err, data) => {
+	dynamodb.update(params, (err, data) => {
 		cb(err, data);
 	});
 }
 
 
+
+// use authentication middleware when router is implemented
 app.post('/logs', (req, res) => {
- 	const { token } = req.body;
+ 	const { token, type, value } = req.body;
+ 	const logId = uuidv4();
 	jwt.verify(token, config.jwt.secret, (err, user) => {
-		if (err || user.id !== req.params.id) {
+		if (err) {
 			res.status(400).send('Action not authorized');
 			return;
 		}
-		updateUser(user.id, 'logs', req.body.housingItem, (err, data) => {
-			if (err) {
-				res.status(500).send(`Failed to add logs on user ${user.email}`);
-				return;
-			}
-			res.status(200).send(`Logs successfully added for user ${user.email}`);
-		})
+
+		const params = {
+			Item: {
+				id: logId,
+				userId: user.id,
+				type,
+				value: utils.deepOmitBy(value, _.isEmpty)
+			},
+			TableName: process.env['LOGS_DYNAMODB_TABLE']
+		};
+		dynamodb.put(params, (error, data) => {
+			if (error) {
+	  		res.status(500).send(error);
+	  		return;
+	  	}
+			console.log('Log entry successfully created for user : ', user.email);
+			res.status(200).send(true);
+		});
 	});
 });
 
@@ -146,7 +151,7 @@ app.post('/users/signin', (req, res) => {
   		return;
   	}
   	const u = data.Items[0];
-		bcrypt.compare(password, u.password.S, function(err, isValid) {
+		bcrypt.compare(password, u.password, function(err, isValid) {
 			if (err) {
 				res.status(500).send(error);
 				return;
@@ -155,10 +160,11 @@ app.post('/users/signin', (req, res) => {
 				res.status(403).send("Email and password don't match");
 				return;
 			}
-			const user = { email: u.email.S, id: u.id.S };
+			const user = { email: u.email, id: u.id };
 			const token = jwt.sign(user, config.jwt.secret, {
 				expiresIn: config.jwt.duration
 			});
+
 			res.json({ user, token });
 		});
 	});
@@ -188,9 +194,9 @@ app.post('/users/signup', (req, res) => {
 			}
 		  const params = {
 				Item: {
-					id: { S: id },
-					email: { S: email },
-					password: { S: hash }
+					id,
+					email,
+					password: hash
 				},
 				TableName: process.env['USERS_DYNAMODB_TABLE']
 			};
