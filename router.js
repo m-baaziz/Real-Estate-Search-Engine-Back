@@ -1,5 +1,5 @@
-import express from 'express';
-import HousingController from '../controllers/HousingController';
+const express = require('express');
+const HousingController = require('../controllers/HousingController');
 
 const router = express.Router();
 
@@ -10,4 +10,4 @@ router.route('/housing/scroll')
 router.route('/housing/:id')
 	.get(HousingController.get);
 
-export default router;
+module.exports = router;
