@@ -1,4 +1,4 @@
-export default class BasicController {
+class BasicController {
 	index() {
 
 	}
@@ -19,3 +19,5 @@ export default class BasicController {
 
 	}
 }
+
+module.exports = BasicController;

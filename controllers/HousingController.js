@@ -1,6 +1,34 @@
-import BasicController from './BasicController';
+const _ = require('lodash');
+const elasticsearch = require('elasticsearch');
+
+const config = require('../config/config');
+const BasicController = require('./BasicController');
+
+const DESCRIPTION_MAX_LENGTH = 1000;
+const ZIPCODE_REGEXP = /^[0-9]{5}$/;
+const SCROLL_TIMEOUT = '30m';
+
+function sendResponse(req, res) {
+	return (esError, esResponse) => {
+		if (esError) {
+			res.status(500).send(`Error : ${esError}`);
+			return;
+		}
+		const { hits, total } = esResponse.hits;
+		const data = hits.map((hit) => {
+			return Object.assign({}, hit._source, {
+				id: hit._id
+			});
+		});
+		res.json({ data, scrollId: esResponse._scroll_id, total });
+	}
+}
 
 class HousingController extends BasicController {
+	constructor() {
+		super();
+		this.client = new elasticsearch.Client(config.elasticsearch);
+	}
 	index(req, res) {
 		const { city, zipcode, price, superficy, rooms, custom, lat, lon } = req.query;
 		const priceMin = parseInt(price.min);
@@ -66,7 +94,7 @@ class HousingController extends BasicController {
 
 		// simulate query to aproximate results lenght / refuse if query is not accurate enough
 
-		esClient.search({
+		this.client.search({
 			index: config.index,
 			type: config.hitsType,
 			scroll: SCROLL_TIMEOUT,
@@ -81,8 +109,45 @@ class HousingController extends BasicController {
 					}
 				}
 			}
-		}, fetchResponse(req, res));
+		}, sendResponse(req, res));
+	}
+
+	get(req, res) {
+		const { id } = req.params;
+
+		if (typeof id !== 'string') {
+			res.status(400).send('Invalid Id');
+			return;
+		}
+
+		this.client.get({
+			index: config.elasticsearch.index,
+			type: config.elasticsearch.hitsType,
+			id
+		}, (err, esResponse) => {
+			if (err) {
+				res.status(err.status || 500).send(err.message || `Error : ${err}`);
+				return;
+			}
+			res.json(Object.assign({}, esResponse._source, {
+				id: esResponse._id
+			}));
+		})
+	}
+
+	scroll(req, res) {
+		const { scrollId } = req.query;
+
+		if (typeof  scrollId !== 'string') {
+			res.status(400).send('Invalid scroll Id');
+			return;
+		}
+
+		this.client.scroll({
+	    scrollId,
+	    scroll: SCROLL_TIMEOUT
+	  }, sendResponse(req, res));
 	}
 }
 
-export default new HousingController();
+module.exports = new HousingController();
