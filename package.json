@@ -27,6 +27,7 @@
     "validator": "^9.4.1"
   },
   "devDependencies": {
+    "babel-plugin-transform-object-rest-spread": "^6.26.0",
     "babel-preset-env": "^1.7.0",
     "serverless-webpack": "^5.1.1",
     "webpack": "^4.14.0",
