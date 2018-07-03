@@ -44,11 +44,11 @@ class HousingController extends BasicController {
 		// use Redis cache to destroy previous scroll memory
 
 		if (
-			(priceMin !== NaN && priceMax !== NaN && priceMin > priceMax) ||
-			(superficyMin !== NaN && superficyMax !== NaN && superficyMin > superficyMax) ||
-			(roomsMin !== NaN && roomsMax !== NaN && roomsMin > roomsMax) ||
-			(latMin !== NaN && latMax !== NaN && latMin > latMax) ||
-			(lonMin !== NaN && lonMax !== NaN && lonMin > lonMax) ||
+			(!isNaN(priceMin) && !isNaN(priceMax) && priceMin > priceMax) ||
+			(!isNaN(superficyMin) && !isNaN(superficyMax) && superficyMin > superficyMax) ||
+			(!isNaN(roomsMin) && !isNaN(roomsMax) && roomsMin > roomsMax) ||
+			(!isNaN(latMin) && !isNaN(latMax) && latMin > latMax) ||
+			(!isNaN(lonMin) && !isNaN(lonMax) && lonMin > lonMax) ||
 			(typeof zipcode !== 'string' || (zipcode.lenght > 0 && !zipcode.match(/^[0-9]{5}$/))) ||
 			(typeof custom !== 'string' || custom.length > DESCRIPTION_MAX_LENGTH) ||
 			(typeof city !== 'string' || city.length > DESCRIPTION_MAX_LENGTH)
