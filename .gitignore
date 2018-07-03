@@ -2,3 +2,4 @@ node_modules
 .serverless
 .webpack
 config/config.js
+.tests
