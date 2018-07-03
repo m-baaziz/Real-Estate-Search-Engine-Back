@@ -15,11 +15,9 @@ const dynamodb = new AWS.DynamoDB.DocumentClient({
 class LogsController extends BasicController {
 	async create(req, res) {
 		try {
-			console.log('5555555555');
 			const { type, value } = req.body;
 			const { id, email } = req.user;
 		 	const logId = uuidv4();
-		 	console.log('66666666666666');
 			const result = await Log.create({
 				id: logId,
 				userId: id,
@@ -30,7 +28,6 @@ class LogsController extends BasicController {
 			res.status(200).send(true);
 		}
 		catch(e) {
-			console.log('ERROOOR ::::: ', e);
 			res.status(500).send(e.message);
 		}
 	}
